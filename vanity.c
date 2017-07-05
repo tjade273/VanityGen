@@ -34,7 +34,10 @@ unsigned char *get_target(char* hex, int *size){
   for(int i = 0; i < len; i+=2){
     buffer[i/2] = ascii_to_byte(hex[i])*16 + ascii_to_byte(hex[i+1]);
   }
-  *size = len/2;
+  if(len % 2 == 1){
+    buffer[len/2] = ascii_to_byte(hex[len-1])*16;
+  }
+  *size = len/2 + len%2;
   return buffer;
 }
 
@@ -106,7 +109,7 @@ int main(int argc, char* argv[]){
 
   int cores = sysconf(_SC_NPROCESSORS_ONLN);
 
-  printf("Searching on %d threads\n ", cores);
+  printf("Searching on %d threads\n", cores);
 
   target = get_target(argv[1], &target_size);
 
