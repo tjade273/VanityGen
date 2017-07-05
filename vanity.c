@@ -30,14 +30,14 @@ libkeccak_spec_t spec;
 
 unsigned char *get_target(char* hex, int *size){
   int len = strlen(hex);
-  unsigned char *buffer = malloc(len/2);
+  unsigned char *buffer = malloc(len/2 + len % 2);
   for(int i = 0; i < len; i+=2){
     buffer[i/2] = ascii_to_byte(hex[i])*16 + ascii_to_byte(hex[i+1]);
   }
   if(len % 2 == 1){
     buffer[len/2] = ascii_to_byte(hex[len-1])*16;
   }
-  *size = len/2 + len%2;
+  *size = len;
   return buffer;
 }
 
@@ -52,6 +52,16 @@ void print_keys(unsigned char *address, unsigned char *privkey){
     printf("%02x", privkey[i]);
   }
   printf("\n");
+}
+
+int hexcmp(unsigned char *a, unsigned char *b, int hexlen){
+  int c = memcmp(a, b, hexlen/2);
+  if(c != 0 || hexlen % 2 == 0){
+    return c;
+  }
+  else {
+    return !(a[hexlen/2] >> 4 ==  b[hexlen/2] >> 4);
+  }
 }
 
 void *generate_address(void *ctx){
@@ -90,9 +100,9 @@ void *generate_address(void *ctx){
       i = 0;
     }
     i++;
-  } while(memcmp(address+12, target, target_size) != 0 && !finished);
+  } while(hexcmp(address+12, target, target_size) != 0 && !finished);
 
-  if(memcmp(address+12, target, target_size) == 0){
+  if(hexcmp(address+12, target, target_size) == 0){
     finished = 1;
     print_keys(address, priv);
   }
@@ -109,9 +119,16 @@ int main(int argc, char* argv[]){
 
   int cores = sysconf(_SC_NPROCESSORS_ONLN);
 
-  printf("Searching on %d threads\n", cores);
-
   target = get_target(argv[1], &target_size);
+
+  printf("Searching on %d threads\nFor prefix ", cores);
+  for(int i = 0; i < target_size/2; i++){
+    printf("%02x", target[i]);
+  }
+  if(target_size % 2 == 1){
+    printf("%x", (target[target_size/2 + 1] >> 4));
+  }
+  printf("\n");
 
   curve = EC_GROUP_new_by_curve_name(NID_secp256k1);
 
@@ -130,6 +147,7 @@ int main(int argc, char* argv[]){
   for(int i = 0; i < cores; i++){
     pthread_join(threads[i], NULL);
   }
+
   EC_GROUP_free(curve);
   free(target);
   pthread_mutex_destroy(&lock);
