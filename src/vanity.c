@@ -7,6 +7,7 @@
 #include <libkeccak.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <time.h>
 
 #define ascii_to_byte(chr) (chr % 32 + 9) % 25
 
@@ -14,7 +15,9 @@
 int finished = 0;
 
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-int counter = 0;
+unsigned long counter = 0;
+clock_t timer;
+
 
 unsigned char *target;
 int target_size;
@@ -92,9 +95,8 @@ void *generate_address(void *ctx){
     libkeccak_fast_update(state, pubkey+1, 64);
     libkeccak_fast_digest(state, NULL, 0, 0, NULL, address);
 
-    if(i >= 100000 && pthread_mutex_trylock(&lock) == 0){
+    if(i >= 100 && pthread_mutex_trylock(&lock) == 0){
       counter+=i;
-      printf("Tried addresses %d\n", counter);
       pthread_mutex_unlock(&lock);
       i = 0;
     }
@@ -116,7 +118,18 @@ void *generate_address(void *ctx){
 
 int main(int argc, char* argv[]){
 
-  int cores = sysconf(_SC_NPROCESSORS_ONLN);
+  int cores;
+
+  if(argc == 2){
+    cores = sysconf(_SC_NPROCESSORS_ONLN);
+  }
+  else if(argc == 3){
+    cores = atoi(argv[2]);
+  }
+  else{
+    printf("usage: vanity prefix [ncores]\n");
+    exit(1);
+  }
 
   target = get_target(argv[1], &target_size);
 
@@ -142,6 +155,12 @@ int main(int argc, char* argv[]){
 
   for(int i = 0; i < cores; i++){
     pthread_create(&threads[i], NULL, generate_address, NULL);
+  }
+
+  while(!finished){
+    if((clock() - timer) % 500000 == 0){
+      printf("KH/s: %d\n", (counter * 1000)/(clock()-timer));
+    }
   }
   for(int i = 0; i < cores; i++){
     pthread_join(threads[i], NULL);
