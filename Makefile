@@ -1,2 +1,3 @@
 default:
-	gcc vanity.c -Ofast -lcrypto -lkeccak -lpthread -o  vanity
+	mkdir -p bin
+	gcc src/vanity.c -Ofast -lcrypto -lkeccak -lpthread -o bin/vanity
