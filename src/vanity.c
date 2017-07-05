@@ -1,16 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <openssl/ec.h>
-#include <openssl/obj_mac.h>
-#include <openssl/rand.h>
 #include <libkeccak.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <time.h>
+#include <secp256k1.h>
+#include <sys/random.h>
 
 #define ascii_to_byte(chr) (chr % 32 + 9) % 25
-
 
 int finished = 0;
 
@@ -18,14 +16,8 @@ pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 unsigned long counter = 0;
 clock_t timer;
 
-
 unsigned char *target;
 int target_size;
-
-EC_GROUP *curve;
-
-const EC_POINT *gen;
-const BIGNUM *one;
 
 libkeccak_spec_t spec;
 
@@ -66,33 +58,29 @@ int hexcmp(unsigned char *a, unsigned char *b, int hexlen){
   }
 }
 
-void *generate_address(void *ctx){
+void *generate_address(void * param){
 
   libkeccak_state_t *state = libkeccak_state_create(&spec);
 
   unsigned char address[32];
+  unsigned char public_key[65];
+  size_t publen = 65;
 
-  unsigned char pubkey[65];
-  unsigned char priv[32];
-  BN_CTX *bn_ctx = BN_CTX_new();
-  EC_POINT *key = EC_POINT_new(curve);
-  BIGNUM *order = BN_new();
-  EC_GROUP_get_order(curve, order, bn_ctx);
-  EC_GROUP_precompute_mult(curve, bn_ctx);
-  BIGNUM *privkey = BN_new();
-  BN_rand(privkey, 256, -1, 0);
-  EC_POINT_mul(curve, key, privkey, NULL, NULL, bn_ctx);
+  secp256k1_context *ctx = secp256k1_context_create(SECP256K1_CONTEXT_VERIFY | SECP256K1_FLAGS_BIT_CONTEXT_SIGN);
+  secp256k1_pubkey pub;
+  unsigned char prv[32];
+  getrandom(prv, 32, 0);
+  secp256k1_ec_pubkey_create(ctx, &pub, prv);
+  const unsigned char tweak[32] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1};
 
   int i = 0;
   do {
-    BN_add(privkey, privkey, one);
-    EC_POINT_add(curve, key, key, gen, bn_ctx);
-    EC_POINT_point2oct(curve, key,
-    		       POINT_CONVERSION_UNCOMPRESSED, pubkey, 65, bn_ctx);
-    BN_bn2bin(privkey, priv);
+    secp256k1_ec_privkey_tweak_add(ctx, prv, tweak);
+    secp256k1_ec_pubkey_tweak_add(ctx, &pub, tweak);
+    secp256k1_ec_pubkey_serialize(ctx, public_key, &publen, &pub, SECP256K1_EC_UNCOMPRESSED);
 
     libkeccak_state_reset(state);
-    libkeccak_fast_update(state, pubkey+1, 64);
+    libkeccak_fast_update(state, public_key+1, 64);
     libkeccak_fast_digest(state, NULL, 0, 0, NULL, address);
 
     if(i >= 100 && pthread_mutex_trylock(&lock) == 0){
@@ -105,13 +93,9 @@ void *generate_address(void *ctx){
 
   if(hexcmp(address+12, target, target_size) == 0){
     finished = 1;
-    print_keys(address, priv);
+    print_keys(address, prv);
   }
-
-  EC_POINT_free(key);
-  BN_CTX_free(bn_ctx);
-  BN_free(privkey);
-  BN_free(order);
+  secp256k1_context_destroy(ctx);
   libkeccak_state_fast_free(state);
 }
 
@@ -142,13 +126,6 @@ int main(int argc, char* argv[]){
   }
   printf("\n");
 
-  curve = EC_GROUP_new_by_curve_name(NID_secp256k1);
-
-  gen = EC_GROUP_get0_generator(curve);
-  one = BN_value_one();
-
-  RAND_poll();
-
   libkeccak_spec_sha3(&spec, 256);
 
   pthread_t threads[cores];
@@ -166,7 +143,6 @@ int main(int argc, char* argv[]){
     pthread_join(threads[i], NULL);
   }
 
-  EC_GROUP_free(curve);
   free(target);
   pthread_mutex_destroy(&lock);
 }
