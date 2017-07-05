@@ -3,7 +3,7 @@
 Requires
 
    - openssl
-   - (libkeccak)[https://github.com/maandree/libkeccak]
+   - [libkeccak](https://github.com/maandree/libkeccak)
 
 Build with
 
