@@ -9,9 +9,7 @@
 #include "src/libsecp256k1-config.h"
 #include "src/secp256k1.c"
 #include "libkeccak.h"
-
-
-#define ascii_to_byte(chr) (chr % 32 + 9) % 25
+#include "vanity.h"
 
 int finished = 0;
 
@@ -20,47 +18,65 @@ int target_size;
 
 libkeccak_spec_t spec;
 
-static const unsigned char secp256k1_scalar_consts_lambda[32] = {
-  0x53,0x63,0xad,0x4c,0xc0,0x5c,0x30,0xe0,
-  0xa5,0x26,0x1c,0x02,0x88,0x12,0x64,0x5a,
-  0x12,0x2e,0x22,0xea,0x20,0x81,0x66,0x78,
-  0xdf,0x02,0x96,0x7c,0x1b,0x23,0xbd,0x72
-};
+int main(int argc, char* argv[]){
 
-unsigned char *get_target(char* hex, int *size){
-  int len = strlen(hex);
-  unsigned char *buffer = malloc(len/2 + len % 2);
-  for(int i = 0; i < len; i+=2){
-    buffer[i/2] = ascii_to_byte(hex[i])*16 + ascii_to_byte(hex[i+1]);
-  }
-  if(len % 2 == 1){
-    buffer[len/2] = ascii_to_byte(hex[len-1])*16;
-  }
-  *size = len;
-  return buffer;
-}
+  int i;
+  setbuf(stdout, NULL);
 
-void print_keys(unsigned char *address, unsigned char *privkey){
-  int i = 0;
-  printf("\nAddress: ");
-  for(i = 12; i < 32; i++){
-    printf("%02x", address[i]);
+  int cores;
+  if(argc == 2){
+    cores = sysconf(_SC_NPROCESSORS_ONLN);
   }
-  printf("\nPrivate Key: ");
-  for(i = 0; i<32; i++){
-    printf("%02x", privkey[i]);
+  else if(argc == 3){
+    cores = atoi(argv[2]);
   }
-  printf("\n");
-}
+  else{
+    printf("usage: vanity prefix [ncores]\n");
+    exit(1);
+  }
 
-int hexcmp(unsigned char *a, unsigned char *b, int hexlen){
-  int c = memcmp(a, b, hexlen/2);
-  if(c != 0 || hexlen % 2 == 0){
-    return c;
+  printf("Searching on %d threads\nFor prefix ", cores);
+
+  target = get_target(argv[1], &target_size);
+
+  libkeccak_spec_sha3(&spec, 256);
+
+  pthread_t threads[cores];
+  unsigned long long counters[cores];
+
+  for(i = 0; i < cores; i++){
+    counters[i] = 0;
+    pthread_create(&threads[i], NULL, generate_address, &counters[i]);
   }
-  else {
-    return !(a[hexlen/2] >> 4 ==  b[hexlen/2] >> 4);
+
+  struct timespec start, end;
+  clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+
+  unsigned long long hashes = 0;
+
+  i = 0;
+  while(!finished) {
+    usleep(500000);
+    for(int j = 0; j < cores; j++){
+      hashes += counters[j];
+      counters[j] = 0;
+    }
+    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+
+    printf("\r                     \rKH/s: %llu", hashes/milisecond_diff(end, start));
+    for(int j = 0; j < i % 6; j++){
+      printf(".");
+    }
+    i++;
   }
+
+  for(i = 0; i < cores; i++){
+    pthread_join(threads[i], NULL);
+  }
+
+  printf("\nTotal addresses tried: %llu", hashes);
+
+  free(target);
 }
 
 void *generate_address(void *ptr){
@@ -77,7 +93,6 @@ void *generate_address(void *ptr){
   unsigned char prv[32];
   getrandom(prv, 32, 0);
   secp256k1_ec_pubkey_create(ctx, &pub, prv);
-  const unsigned char tweak[32] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1};
   secp256k1_ge p;
 
   do {
@@ -109,71 +124,24 @@ void *generate_address(void *ptr){
 }
 
 
-int main(int argc, char* argv[]){
-
-  int cores;
-  int i;
-
-  setbuf(stdout, NULL);
-
-  if(argc == 2){
-    cores = sysconf(_SC_NPROCESSORS_ONLN);
+unsigned char *get_target(char* hex, int *size){
+  int len = strlen(hex);
+  unsigned char *buffer = malloc(len/2 + len % 2);
+  for(int i = 0; i < len; i+=2){
+    buffer[i/2] = ascii_to_byte(hex[i])*16 + ascii_to_byte(hex[i+1]);
   }
-  else if(argc == 3){
-    cores = atoi(argv[2]);
+  if(len % 2 == 1){
+    buffer[len/2] = ascii_to_byte(hex[len-1])*16;
   }
-  else{
-    printf("usage: vanity prefix [ncores]\n");
-    exit(1);
-  }
+  *size = len;
 
-  target = get_target(argv[1], &target_size);
-  printf("Searching on %d threads\nFor prefix ", cores);
-  for(i = 0; i < target_size/2; i++){
-    printf("%02x", target[i]);
+  for(int i = 0; i < len/2; i++){
+    printf("%02x", buffer[i]);
   }
   if(target_size % 2 == 1){
-    printf("%x", (target[target_size/2] >> 4));
+    printf("%x", (buffer[len/2] >> 4));
   }
   printf("\n");
 
-  libkeccak_spec_sha3(&spec, 256);
-
-  pthread_t threads[cores];
-  unsigned long long counters[cores];
-
-  for(i = 0; i < cores; i++){
-    counters[i] = 0;
-    pthread_create(&threads[i], NULL, generate_address, &counters[i]);
-  }
-
-  struct timespec start, end;
-  clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-
-  unsigned long long hashes = 0;
-
-  i = 0;
-  while(!finished) {
-    usleep(500000);
-    for(int j = 0; j < cores; j++){
-      hashes += counters[j];
-      counters[j] = 0;
-    }
-    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-    long milisecs = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_nsec - start.tv_nsec) / 1000000;
-
-    printf("\r                     \rKH/s: %llu", hashes/milisecs);
-    for(int j = 0; j < i % 6; j++){
-      printf(".");
-    }
-    i++;
-  }
-
-  for(i = 0; i < cores; i++){
-    pthread_join(threads[i], NULL);
-  }
-
-  printf("\nTotal addresses tried: %llu", hashes);
-
-  free(target);
+  return buffer;
 }
