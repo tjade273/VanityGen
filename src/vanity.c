@@ -5,8 +5,12 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <time.h>
-#include <secp256k1.h>
 #include <sys/random.h>
+
+#define STEP 3072
+#include "src/libsecp256k1-config.h"
+#include "src/secp256k1.c"
+
 
 #define ascii_to_byte(chr) (chr % 32 + 9) % 25
 
@@ -66,7 +70,7 @@ void *generate_address(void * param){
   unsigned char public_key[65];
   size_t publen = 65;
 
-  secp256k1_context *ctx = secp256k1_context_create(SECP256K1_CONTEXT_VERIFY | SECP256K1_FLAGS_BIT_CONTEXT_SIGN);
+  secp256k1_context *ctx = secp256k1_context_create(SECP256K1_CONTEXT_VERIFY | SECP256K1_CONTEXT_SIGN);
   secp256k1_pubkey pub;
   unsigned char prv[32];
   getrandom(prv, 32, 0);
