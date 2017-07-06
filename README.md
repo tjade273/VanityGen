@@ -2,7 +2,7 @@
 
 Requires
 
-   - GMP
+   - GMP (Availible via apt, brew, etc.)
 
 Checkout and build with
 
