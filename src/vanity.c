@@ -5,8 +5,6 @@
 #include <unistd.h>
 #include <time.h>
 #include <sys/random.h>
-
-#define STEP 3072
 #include "src/libsecp256k1-config.h"
 #include "src/secp256k1.c"
 #include "libkeccak.h"
@@ -22,12 +20,27 @@ int target_size;
 libkeccak_spec_t spec;
 
 static const unsigned char secp256k1_scalar_consts_lambda[32] = {
-         0x53,0x63,0xad,0x4c,0xc0,0x5c,0x30,0xe0,
-         0xa5,0x26,0x1c,0x02,0x88,0x12,0x64,0x5a,
-         0x12,0x2e,0x22,0xea,0x20,0x81,0x66,0x78,
-	 0xdf,0x02,0x96,0x7c,0x1b,0x23,0xbd,0x72
+  0x53,0x63,0xad,0x4c,0xc0,0x5c,0x30,0xe0,
+  0xa5,0x26,0x1c,0x02,0x88,0x12,0x64,0x5a,
+  0x12,0x2e,0x22,0xea,0x20,0x81,0x66,0x78,
+  0xdf,0x02,0x96,0x7c,0x1b,0x23,0xbd,0x72
 };
 
+static void secp256k1_ge_mul_lambda1 (secp256k1_ge *r, const secp256k1_ge *a) {
+    static const secp256k1_fe beta1 = SECP256K1_FE_CONST(
+        0x851695d4ul, 0x9a83f8eful, 0x919bb861ul, 0x53cbcb16ul,
+	0x630fb68aul, 0xed0a766aul, 0x3ec693d6ul, 0x8e6afa40ul
+    );
+    *r = *a;
+    secp256k1_fe_mul(&r->x, &r->x, &beta1);
+}
+
+static const unsigned char secp256k1_scalar_consts_lambda1[32] = {
+  0xac,0x9c,0x52,0xb3,0x3f,0xa3,0xcf,0x1f,
+  0x5a,0xd9,0xe3,0xfd,0x77,0xed,0x9b,0xa4,
+  0xa8,0x80,0xb9,0xfc,0x8e,0xc7,0x39,0xc2,
+  0xe0,0xcf,0xc8,0x10,0xb5,0x12,0x83,0xce
+};
 
 unsigned char *get_target(char* hex, int *size){
   int len = strlen(hex);
@@ -44,7 +57,7 @@ unsigned char *get_target(char* hex, int *size){
 
 void print_keys(unsigned char *address, unsigned char *privkey){
   int i = 0;
-  printf("Address: ");
+  printf("\nAddress: ");
   for(i = 12; i < 32; i++){
     printf("%02x", address[i]);
   }
@@ -87,15 +100,18 @@ void *generate_address(void *ptr){
       secp256k1_ec_privkey_tweak_add(ctx, prv, tweak);
       secp256k1_ec_pubkey_tweak_add(ctx, &pub, tweak);
     }
+
     secp256k1_pubkey_load(ctx, &p, &pub);
     secp256k1_ge_mul_lambda(&p, &p);
     secp256k1_pubkey_save(&pub, &p);
     secp256k1_ec_privkey_tweak_mul(ctx, prv, secp256k1_scalar_consts_lambda);
+
     secp256k1_ec_pubkey_serialize(ctx, public_key, &publen, &pub, SECP256K1_EC_UNCOMPRESSED);
 
     libkeccak_state_reset(state);
     libkeccak_fast_update(state, public_key+1, 64);
     libkeccak_fast_digest(state, NULL, 0, 0, NULL, address);
+
     *counter = *counter+1;
   } while(hexcmp(address+12, target, target_size) != 0 && !finished);
 
@@ -111,6 +127,9 @@ void *generate_address(void *ptr){
 int main(int argc, char* argv[]){
 
   int cores;
+  int i;
+
+  setbuf(stdout, NULL);
 
   if(argc == 2){
     cores = sysconf(_SC_NPROCESSORS_ONLN);
@@ -124,9 +143,8 @@ int main(int argc, char* argv[]){
   }
 
   target = get_target(argv[1], &target_size);
-
   printf("Searching on %d threads\nFor prefix ", cores);
-  for(int i = 0; i < target_size/2; i++){
+  for(i = 0; i < target_size/2; i++){
     printf("%02x", target[i]);
   }
   if(target_size % 2 == 1){
@@ -139,27 +157,30 @@ int main(int argc, char* argv[]){
   pthread_t threads[cores];
   unsigned long long counters[cores];
 
-  for(int i = 0; i < cores; i++){
+  for(i = 0; i < cores; i++){
     counters[i] = 0;
     pthread_create(&threads[i], NULL, generate_address, &counters[i]);
   }
 
   clock_t timer = clock();
-  unsigned long long hashes;
+  unsigned long long hashes = 0;
 
+  i = 0;
+  while(!finished) {
 
-  while(!finished){
-    if(clock() - timer >= 1000000){
-      hashes = 0;
-      for(int i = 0; i < cores; i++){
-	hashes += counters[i];
-	counters[i] = 0;
-      }
-      printf("KH/s: %llu\n", hashes/1000);
-      timer = clock();
+    for(int j = 0; j < cores; j++){
+      hashes += counters[j];
+      counters[j] = 0;
     }
+    printf("\r                     \rKH/s: %llu", (hashes*1000)/(clock()-timer));
+    for(int j = 0; j < i % 6; j++){
+      printf(".");
+    }
+    usleep(500000);
+    i++;
   }
-  for(int i = 0; i < cores; i++){
+
+  for(i = 0; i < cores; i++){
     pthread_join(threads[i], NULL);
   }
 
