@@ -2,17 +2,18 @@
 
 Requires
 
-   - openssl
-   - [libkeccak](https://github.com/maandree/libkeccak)
+   - GMP
 
-Build with
+Checkout and build with
 
+	git clone --recursive https://github.com/tjade273/VanityGen.git
+	cd VanityGen
 	make
 
 Run as
 
-    ./vanity MY_PREFIX
+    ./vanity PREFIX [NUM_CORES]
 
 For example
 
-	./vanity deadbeef
+	./vanity deadbeef 4

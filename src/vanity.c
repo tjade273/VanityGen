@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <libkeccak.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <time.h>
@@ -10,6 +9,7 @@
 #define STEP 3072
 #include "src/libsecp256k1-config.h"
 #include "src/secp256k1.c"
+#include "libkeccak.h"
 
 
 #define ascii_to_byte(chr) (chr % 32 + 9) % 25
