@@ -1,7 +1,7 @@
 CC=gcc
 IDIRS=-Isecp256k1/include -Isecp256k1 -Ilibkeccak/src
 LDIRS=-Lsecp256k1/src -Lsecp256k1 -Llibkeccak/bin
-LIBS=-lgmp -lsecp256k1 -lkeccak -lpthread
+LIBS=-lgmp -lsecp256k1 -lpthread libkeccak/bin/libkeccak.a
 CFLAGS=$(IDIRS) $(LDIRS) $(LIBS)
 DEPS=src/vanity.c secp256k1/src/libsecp256k1-config.h secp256k1/src/ecmult_static_context.h libkeccak/bin/libkeccak.so
 
@@ -18,5 +18,5 @@ secp256k1/src/libsecp256k1-config.h:
 secp256k1/src/ecmult_static_context.h:
 	$(MAKE) -C secp256k1 src/ecmult_static_context.h
 
-libkeccak/bin/libkeccak.so:
+libkeccak/bin/libkeccak.a:
 	$(MAKE) -C libkeccak lib
