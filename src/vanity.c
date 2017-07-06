@@ -132,7 +132,7 @@ int main(int argc, char* argv[]){
     printf("%02x", target[i]);
   }
   if(target_size % 2 == 1){
-    printf("%x", (target[target_size/2 + 1] >> 4));
+    printf("%x", (target[target_size/2] >> 4));
   }
   printf("\n");
 
