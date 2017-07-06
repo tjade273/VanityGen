@@ -18,6 +18,9 @@ int target_size;
 
 libkeccak_spec_t spec;
 
+secp256k1_context *ctx;
+
+
 int main(int argc, char* argv[]){
 
   int i;
@@ -36,6 +39,8 @@ int main(int argc, char* argv[]){
   }
 
   printf("Searching on %d threads\nFor prefix ", cores);
+
+  ctx = secp256k1_context_create(SECP256K1_CONTEXT_VERIFY | SECP256K1_CONTEXT_SIGN);
 
   target = get_target(argv[1], &target_size);
 
@@ -74,9 +79,10 @@ int main(int argc, char* argv[]){
     pthread_join(threads[i], NULL);
   }
 
-  printf("\nTotal addresses tried: %llu", hashes);
+  printf("\nTotal addresses tried: %llu\n", hashes);
 
   free(target);
+  secp256k1_context_destroy(ctx);
 }
 
 void *generate_address(void *ptr){
@@ -88,7 +94,6 @@ void *generate_address(void *ptr){
   unsigned char public_key[65];
   size_t publen = 65;
 
-  secp256k1_context *ctx = secp256k1_context_create(SECP256K1_CONTEXT_VERIFY | SECP256K1_CONTEXT_SIGN);
   secp256k1_pubkey pub;
   unsigned char prv[32];
   getrandom(prv, 32, 0);
@@ -119,7 +124,6 @@ void *generate_address(void *ptr){
     finished = 1;
     print_keys(address, prv);
   }
-  secp256k1_context_destroy(ctx);
   libkeccak_state_fast_free(state);
 }
 
