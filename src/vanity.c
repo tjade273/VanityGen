@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <sys/random.h>
+#include <sys/time.h>
 #include "src/libsecp256k1-config.h"
 #include "src/secp256k1.c"
 #include "libkeccak.h"
@@ -146,27 +147,33 @@ int main(int argc, char* argv[]){
     pthread_create(&threads[i], NULL, generate_address, &counters[i]);
   }
 
-  clock_t timer = clock();
+  struct timespec start, end;
+  clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+
   unsigned long long hashes = 0;
 
   i = 0;
   while(!finished) {
-
+    usleep(500000);
     for(int j = 0; j < cores; j++){
       hashes += counters[j];
       counters[j] = 0;
     }
-    printf("\r                     \rKH/s: %llu", (hashes*1000)/(clock()-timer));
+    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+    long milisecs = (end.tv_sec - start.tv_sec) * 1000 + (end.tv_nsec - start.tv_nsec) / 1000000;
+
+    printf("\r                     \rKH/s: %llu", hashes/milisecs);
     for(int j = 0; j < i % 6; j++){
       printf(".");
     }
-    usleep(500000);
     i++;
   }
 
   for(i = 0; i < cores; i++){
     pthread_join(threads[i], NULL);
   }
+
+  printf("\nTotal addresses tried: %llu", hashes);
 
   free(target);
 }
