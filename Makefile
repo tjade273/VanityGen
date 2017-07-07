@@ -19,4 +19,4 @@ secp256k1/src/ecmult_static_context.h:
 	$(MAKE) -C secp256k1 src/ecmult_static_context.h
 
 libkeccak/bin/libkeccak.a:
-	$(MAKE) -C libkeccak lib
+	$(MAKE) -C libkeccak a
